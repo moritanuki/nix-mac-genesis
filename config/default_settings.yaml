@@ -1,0 +1,157 @@
+# Default settings for nix-mac-genesis
+
+# Nix installation settings
+nix:
+  installer_url: "https://install.determinate.systems/nix"
+  enable_flakes: true
+  trusted_users:
+    - root
+    - "@admin"
+
+# GitHub settings
+github:
+  ssh_key_type: "ed25519"
+  use_gpg_signing: true
+  gpg_key_type: "rsa4096"
+  gpg_expire: "2y"
+
+# System defaults
+system:
+  # Dock configuration
+  dock:
+    autohide: true
+    autohide_delay: 0.1
+    autohide_time_modifier: 0.5
+    tilesize: 48
+    orientation: "bottom"
+    show_recents: false
+    static_only: true
+    mineffect: "scale"
+  
+  # Finder configuration
+  finder:
+    AppleShowAllFiles: true
+    ShowStatusBar: true
+    ShowPathbar: true
+    FXDefaultSearchScope: "SCcf"
+    FXPreferredViewStyle: "Nlsv"
+  
+  # Global system settings
+  global:
+    AppleShowAllExtensions: true
+    ApplePressAndHoldEnabled: false
+    KeyRepeat: 2
+    InitialKeyRepeat: 15
+    AppleInterfaceStyle: "Dark"
+
+# Package lists
+packages:
+  # Core development tools
+  core:
+    - git
+    - gh
+    - vim
+    - neovim
+    - tmux
+    - direnv
+  
+  # System utilities
+  utilities:
+    - curl
+    - wget
+    - htop
+    - tree
+    - jq
+    - ripgrep
+    - fd
+    - bat
+    - eza
+  
+  # Container tools
+  containers:
+    - colima
+    - docker-client
+    - docker-compose
+  
+  # Programming languages
+  languages:
+    node:
+      - nodejs_20
+      - yarn
+    python:
+      - python311
+      - python311Packages.pip
+  
+  # Nix tools
+  nix_tools:
+    - nil
+    - nixpkgs-fmt
+    - nix-tree
+
+# Homebrew casks
+homebrew:
+  # Terminal emulators
+  terminals:
+    - warp
+  
+  # Productivity tools
+  productivity:
+    - raycast
+    - notion
+    - 1password
+    - rectangle
+  
+  # Browsers
+  browsers:
+    - firefox-developer-edition
+    - google-chrome
+  
+  # Development tools
+  development:
+    - visual-studio-code
+    - docker
+  
+  # Communication
+  communication:
+    - slack
+    - discord
+
+# VS Code extensions
+vscode_extensions:
+  - ms-python.python
+  - ms-vscode.cpptools
+  - jnoortheen.nix-ide
+  - github.copilot
+  - esbenp.prettier-vscode
+  - dbaeumer.vscode-eslint
+  - eamodio.gitlens
+
+# Shell configuration
+shell:
+  zsh:
+    enable: true
+    enable_autosuggestions: true
+    enable_completion: true
+    syntax_highlighting: true
+    oh_my_zsh:
+      enable: true
+      theme: "robbyrussell"
+      plugins:
+        - git
+        - docker
+        - kubectl
+        - macos
+        - brew
+
+# Git configuration
+git:
+  init_default_branch: "main"
+  pull_rebase: false
+  push_auto_setup_remote: true
+  color_ui: "auto"
+
+# Security settings
+security:
+  enable_sudo_touch_id: true
+  backup_encryption: true
+  keychain_integration: true
