@@ -184,6 +184,11 @@ def main():
         '--private-repo',
         help='Nix-Darwin設定のprivateリポジトリURL'
     )
+    parser.add_argument(
+        '--github-username',
+        default=os.environ.get('GITHUB_USERNAME', 'moritanuki'),
+        help='GitHubユーザー名（デフォルト: 環境変数GITHUB_USERNAME or moritanuki）'
+    )
     
     args = parser.parse_args()
     

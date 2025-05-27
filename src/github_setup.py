@@ -293,13 +293,15 @@ Expire-Date: 2y
         
         # 名前の設定
         if not current_name:
-            name = input("Gitユーザー名: ").strip()
+            default_name = os.environ.get('GIT_USER_NAME', 'moritanuki')
+            name = input(f"Gitユーザー名 [{default_name}]: ").strip() or default_name
             if name:
                 subprocess.run(['git', 'config', '--global', 'user.name', name], check=True)
                 
         # メールアドレスの設定
         if not current_email:
-            email = input("Gitメールアドレス: ").strip()
+            default_email = os.environ.get('GIT_USER_EMAIL', '82251856+moritanuki@users.noreply.github.com')
+            email = input(f"Gitメールアドレス [{default_email}]: ").strip() or default_email
             if email:
                 subprocess.run(['git', 'config', '--global', 'user.email', email], check=True)
                 

@@ -8,7 +8,7 @@ Nixを使ってMacBookの初期設定を完全自動化するPythonアプリケ�
 
 ```bash
 # GitHubから取得
-curl -o bootstrap.py https://github.com/[username]/nix-mac-genesis/raw/main/bootstrap.py
+curl -o bootstrap.py https://github.com/moritanuki/nix-mac-genesis/raw/main/bootstrap.py
 python3 bootstrap.py
 ```
 
@@ -77,7 +77,22 @@ python3 bootstrap.py -v
 python3 bootstrap.py -y
 
 # プライベートリポジトリを指定
-python3 bootstrap.py --private-repo git@github.com:username/dotfiles.git
+python3 bootstrap.py --private-repo git@github.com:moritanuki/dotfiles.git
+```
+
+### 環境変数
+
+以下の環境変数を設定することで、デフォルト値をカスタマイズできます：
+
+```bash
+# GitHubユーザー名（デフォルト: moritanuki）
+export GITHUB_USERNAME=your-username
+
+# Gitユーザー名（デフォルト: moritanuki）
+export GIT_USER_NAME="Your Name"
+
+# Gitメールアドレス（デフォルト: 82251856+moritanuki@users.noreply.github.com）
+export GIT_USER_EMAIL="your-email@example.com"
 ```
 
 ### 既存設定からの復元
@@ -85,7 +100,7 @@ python3 bootstrap.py --private-repo git@github.com:username/dotfiles.git
 プライベートリポジトリにNix-Darwin設定がある場合：
 
 ```bash
-python3 bootstrap.py --private-repo git@github.com:username/my-nix-config.git
+python3 bootstrap.py --private-repo git@github.com:moritanuki/my-nix-config.git
 ```
 
 ## 🔐 セキュリティ機能
