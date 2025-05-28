@@ -7,15 +7,19 @@ Nixを使ってMacBookの初期設定を完全自動化するPythonアプリケ�
 新しいMacで以下のコマンドを実行：
 
 ```bash
-# GitHubから取得
-curl -o bootstrap.py https://github.com/moritanuki/nix-mac-genesis/raw/main/bootstrap.py
+# リポジトリをクローン
+git clone https://github.com/moritanuki/nix-mac-genesis.git
+cd nix-mac-genesis
+
+# Bootstrap実行
 python3 bootstrap.py
 ```
 
 ## 📋 機能
 
 ### Phase 1: Bootstrap（Python）
-- ✅ Nixインストール（Determinate Systems installer使用）
+- ✅ Nixインストール（公式インストーラー使用、マルチユーザーインストール）
+- ✅ Nix Flakes有効化
 - ✅ SSH鍵生成・GitHub登録
 - ✅ GPG鍵生成・設定
 - ✅ GitHub CLI認証
@@ -35,13 +39,13 @@ python3 bootstrap.py
 - Ripgrep, fd, bat, eza
 - Node.js, Python
 - Docker CLI, Colima
+- pass (password-store), GnuPG
 
 ### Homebrew Casks
 - Warp (Terminal)
 - Raycast
 - Visual Studio Code
 - Firefox Developer Edition
-- 1Password
 
 ## 📁 プロジェクト構造
 
@@ -108,7 +112,8 @@ python3 bootstrap.py --private-repo git@github.com:moritanuki/my-nix-config.git
 - SSH鍵の自動生成と安全な管理
 - GPG鍵によるGitコミット署名
 - macOSキーチェーン統合
-- 鍵の暗号化バックアップ機能
+- password-storeによるパスワード管理
+- GitHubプライベートリポジトリでのパスワード同期
 
 ## 📝 カスタマイズ
 
@@ -133,8 +138,22 @@ Bootstrap実行後、`~/.config/nix-darwin/`に以下のファイルが生成さ
 ### Nixインストールが失敗する場合
 
 ```bash
-# 既存のNixをアンインストール
-/nix/nix-installer uninstall
+# 既存のNixをアンインストール（公式アンインストーラー）
+sudo rm -rf /nix
+sudo rm -rf /etc/nix /etc/profile.d/nix.sh /etc/bashrc /etc/zshrc
+sudo rm -rf ~/nix-profile
+sudo dscl . -delete /Users/nixbld*
+
+# macOSの再起動後、再度インストール
+python3 bootstrap.py
+```
+
+### Nixインストール後の注意事項
+
+Nixインストール後は新しいターミナルセッションを開くか、以下のコマンドを実行してください：
+
+```bash
+source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
 ```
 
 ### SSH鍵の問題
@@ -146,6 +165,34 @@ ssh-add -l
 # キーチェーンから再読み込み
 ssh-add --apple-use-keychain ~/.ssh/id_ed25519
 ```
+
+### password-storeの使用方法
+
+Bootstrap実行時に、GitHubプライベートリポジトリからpassword-storeをクローンできます。
+
+```bash
+# パスワードの一覧表示
+pass
+
+# パスワードの表示
+pass show サービス名
+
+# パスワードの生成（16文字）
+pass generate サービス名 16
+
+# パスワードをクリップボードにコピー（45秒後に自動削除）
+pass show -c サービス名
+
+# 変更をGitリポジトリにプッシュ
+pass git push
+```
+
+便利なエイリアスも設定されています：
+- `pw` - pass
+- `pwg` - pass generate
+- `pws` - pass show
+- `pwc` - pass show -c（クリップボードにコピー）
+- `pwgit` - pass git
 
 ## 📄 ライセンス
 

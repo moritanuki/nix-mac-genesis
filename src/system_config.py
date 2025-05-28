@@ -173,46 +173,54 @@ class SystemConfigDetector:
         
     def _generate_flake_nix(self):
         """flake.nixを生成"""
-        flake_content = """{
+        # Get hostname and username
+        hostname = subprocess.run(
+            ['hostname', '-s'],
+            capture_output=True,
+            text=True
+        ).stdout.strip()
+        
+        username = subprocess.run(
+            ['whoami'],
+            capture_output=True,
+            text=True
+        ).stdout.strip()
+        
+        flake_content = f'''{{
   description = "nix-darwin system configuration";
 
-  inputs = {
+  inputs = {{
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    nix-darwin = {
+    nix-darwin = {{
       url = "github:LnL7/nix-darwin";
       inputs.nixpkgs.follows = "nixpkgs";
-    };
-    home-manager = {
+    }};
+    home-manager = {{
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
-    };
-  };
+    }};
+  }};
 
-  outputs = inputs@{ self, nix-darwin, nixpkgs, home-manager }: 
-  let
-    system = "aarch64-darwin";  # Apple Silicon
-    username = builtins.getEnv "USER";
-  in
-  {
-    darwinConfigurations."${username}-mac" = nix-darwin.lib.darwinSystem {
-      inherit system;
+  outputs = inputs@{{ self, nix-darwin, nixpkgs, home-manager }}: {{
+    darwinConfigurations."{hostname}" = nix-darwin.lib.darwinSystem {{
+      system = "aarch64-darwin";  # Apple Silicon
       
       modules = [
         ./darwin-configuration.nix
         home-manager.darwinModules.home-manager
-        {
+        {{
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
-          home-manager.users.${username} = import ./home.nix;
-        }
+          home-manager.users.{username} = import ./home.nix;
+        }}
       ];
-    };
+    }};
 
     # Convenience output for applying the configuration
-    darwinPackages = self.darwinConfigurations."${username}-mac".pkgs;
-  };
-}
-"""
+    darwinPackages = self.darwinConfigurations."{hostname}".pkgs;
+  }};
+}}
+'''
         
         flake_path = self.config_dir / 'flake.nix'
         flake_path.write_text(flake_content)
@@ -310,6 +318,14 @@ class SystemConfigDetector:
       gp = "git push";
       gs = "git status";
       rebuild = "darwin-rebuild switch --flake ~/.config/nix-darwin";
+      
+      # password-store aliases
+      pw = "pass";
+      pwg = "pass generate";
+      pws = "pass show";
+      pwf = "pass find";
+      pwc = "pass show -c";
+      pwgit = "pass git";
     };
   };
 
@@ -439,6 +455,11 @@ class SystemConfigDetector:
     nil
     nixpkgs-fmt
     nix-tree
+    
+    # Password management
+    pass
+    gnupg
+    pinentry_mac
   ];
 }
 """
@@ -496,7 +517,6 @@ class SystemConfigDetector:
       "discord"
       
       # Utilities
-      "1password"
       "rectangle"
     ];
     

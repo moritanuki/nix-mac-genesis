@@ -19,31 +19,41 @@ class NixInstaller:
         self.user_conf_dir = Path.home() / '.config/nix'
         
     def install_nix(self):
-        """Determinate Systems installerを使用してNixをインストール"""
-        self.logger.info("Determinate Systems InstallerでNixをインストール中...")
+        """公式インストーラーを使用してNixをインストール"""
+        self.logger.info("公式インストーラーでNixをインストール中...")
         
         try:
-            # Determinate Systems installerをダウンロードして実行
-            installer_url = "https://install.determinate.systems/nix"
+            # 公式Nixインストーラーをダウンロードして実行
+            installer_url = "https://nixos.org/nix/install"
             
-            # curlでインストーラーを直接実行
-            cmd = f"curl --proto '=https' --tlsv1.2 -sSf -L {installer_url} | sh -s -- install --no-confirm"
+            # インストーラーをダウンロード
+            self.logger.info("インストーラーをダウンロード中...")
+            download_cmd = f"curl -L {installer_url} -o /tmp/install-nix.sh"
+            subprocess.run(download_cmd, shell=True, check=True)
             
+            # インストーラーに実行権限を付与
+            subprocess.run(['chmod', '+x', '/tmp/install-nix.sh'], check=True)
+            
+            # インストーラーを実行（対話的に）
+            self.logger.info("Nixインストーラーを実行します（sudoパスワードが必要です）")
             result = subprocess.run(
-                cmd,
-                shell=True,
-                capture_output=True,
-                text=True
+                ['sh', '/tmp/install-nix.sh', '--daemon'],
+                check=False
             )
             
             if result.returncode != 0:
-                self.logger.error(f"Nixインストールエラー: {result.stderr}")
+                self.logger.error("Nixインストールに失敗しました")
                 raise Exception("Nixのインストールに失敗しました")
                 
             self.logger.info("✅ Nixのインストールが完了しました")
             
-            # 環境変数の再読み込みを促す
-            self.logger.info("ℹ️  新しいシェルセッションでNixが利用可能になります")
+            # 環境変数の再読み込み
+            self.logger.info("環境変数を再読み込み中...")
+            if Path('/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh').exists():
+                subprocess.run([
+                    'source',
+                    '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
+                ], shell=True)
             
         except Exception as e:
             self.logger.error(f"Nixインストール中にエラー: {e}")
@@ -54,41 +64,56 @@ class NixInstaller:
         self.logger.info("Nix Flakesを有効化中...")
         
         # nix.confの設定
-        nix_conf_content = """# Nix configuration
-experimental-features = nix-command flakes
-auto-optimise-store = true
-trusted-users = root @admin
-"""
+        nix_conf_content = """experimental-features = nix-command flakes"""
         
         # /etc/nix/nix.confに設定を追加
-        if self.nix_conf_dir.exists():
-            nix_conf_path = self.nix_conf_dir / 'nix.conf'
-            
+        nix_conf_path = self.nix_conf_dir / 'nix.conf'
+        
+        try:
             # 既存の設定を読み込み
             existing_content = ""
             if nix_conf_path.exists():
-                existing_content = nix_conf_path.read_text()
+                result = subprocess.run(
+                    ['sudo', 'cat', str(nix_conf_path)],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                existing_content = result.stdout
                 
             # experimental-featuresが既に設定されているかチェック
             if 'experimental-features' not in existing_content:
                 self.logger.info(f"設定を追加: {nix_conf_path}")
                 
+                # 設定を追加
+                if existing_content and not existing_content.endswith('\n'):
+                    existing_content += '\n'
+                new_content = existing_content + nix_conf_content + '\n'
+                
                 # sudoで書き込み
-                with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-                    temp_file.write(existing_content + '\n' + nix_conf_content)
-                    temp_path = temp_file.name
-                    
-                subprocess.run(
-                    ['sudo', 'cp', temp_path, str(nix_conf_path)],
-                    check=True
+                process = subprocess.Popen(
+                    ['sudo', 'tee', str(nix_conf_path)],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
                 )
-                os.unlink(temp_path)
+                stdout, stderr = process.communicate(input=new_content)
+                
+                if process.returncode != 0:
+                    raise Exception(f"設定の書き込みに失敗: {stderr}")
+                    
+                # nix-daemonを再起動
+                self.logger.info("nix-daemonを再起動中...")
+                subprocess.run(['sudo', 'launchctl', 'kickstart', '-k', 'system/org.nixos.nix-daemon'], check=True)
+                
             else:
                 self.logger.info("Flakesは既に有効化されています")
                 
-        # ユーザー設定ディレクトリの作成
-        self.user_conf_dir.mkdir(parents=True, exist_ok=True)
-        
+        except Exception as e:
+            self.logger.error(f"Flakes設定中にエラー: {e}")
+            raise
+            
         self.logger.info("✅ Nix Flakesの設定が完了しました")
         
     def install_nix_darwin(self):
@@ -96,63 +121,140 @@ trusted-users = root @admin
         self.logger.info("nix-darwinをインストール中...")
         
         try:
-            # nix-darwinのインストール
-            cmd = [
-                'nix', 'run', 'nix-darwin', '--experimental-features', 
-                'nix-command flakes', '--', 'switch', '--flake', 
-                str(Path.home() / '.config/nix-darwin')
-            ]
+            # darwin-rebuildコマンドが存在するかチェック
+            darwin_rebuild_exists = subprocess.run(
+                ['which', 'darwin-rebuild'],
+                capture_output=True
+            ).returncode == 0
             
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            if result.returncode != 0:
-                # 初回インストールの場合はbootstrapが必要
-                if "darwin-rebuild" not in result.stderr:
-                    self.logger.info("初回インストールのためbootstrapを実行...")
-                    self._bootstrap_nix_darwin()
-                else:
-                    self.logger.error(f"nix-darwinインストールエラー: {result.stderr}")
-                    raise Exception("nix-darwinのインストールに失敗しました")
+            if not darwin_rebuild_exists:
+                # 初回インストール
+                self.logger.info("nix-darwinの初回インストールを実行...")
+                
+                # nix-darwin用の設定ディレクトリを作成
+                darwin_config_dir = Path.home() / '.config/nix-darwin'
+                darwin_config_dir.mkdir(parents=True, exist_ok=True)
+                
+                # 基本的なflake.nixを作成（後でsystem_config.pyで更新される）
+                if not (darwin_config_dir / 'flake.nix').exists():
+                    self._create_initial_flake(darwin_config_dir)
+                
+                # nix-darwinをビルドしてインストール
+                cmd = [
+                    'nix', 'build', f'{darwin_config_dir}#darwinConfigurations.$(hostname -s).system',
+                    '--extra-experimental-features', 'nix-command flakes'
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    self.logger.error(f"nix-darwinビルドエラー: {result.stderr}")
+                    raise Exception("nix-darwinのビルドに失敗しました")
+                
+                # システムにインストール
+                self.logger.info("nix-darwinをシステムにインストール中...")
+                cmd = [
+                    './result/sw/bin/darwin-rebuild', 'switch',
+                    '--flake', str(darwin_config_dir)
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    self.logger.error(f"darwin-rebuild switchエラー: {result.stderr}")
+                    raise Exception("darwin-rebuild switchに失敗しました")
+                    
             else:
-                self.logger.info("✅ nix-darwinのインストールが完了しました")
+                # 既にインストール済みの場合は設定を適用
+                self.logger.info("nix-darwinは既にインストール済み。設定を適用中...")
+                darwin_config_dir = Path.home() / '.config/nix-darwin'
+                
+                cmd = [
+                    'darwin-rebuild', 'switch',
+                    '--flake', str(darwin_config_dir)
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    self.logger.error(f"darwin-rebuild switchエラー: {result.stderr}")
+                    raise Exception("darwin-rebuild switchに失敗しました")
+                    
+            self.logger.info("✅ nix-darwinのインストール/設定が完了しました")
                 
         except Exception as e:
             self.logger.error(f"nix-darwinインストール中にエラー: {e}")
             raise
             
-    def _bootstrap_nix_darwin(self):
-        """nix-darwinの初回bootstrap"""
-        config_dir = Path.home() / '.config/nix-darwin'
+    def _create_initial_flake(self, config_dir):
+        """初期のflake.nixを作成"""
+        hostname = subprocess.run(
+            ['hostname', '-s'],
+            capture_output=True,
+            text=True
+        ).stdout.strip()
         
-        # 基本的なflake.nixが必要
-        if not (config_dir / 'flake.nix').exists():
-            self.logger.error("flake.nixが見つかりません")
-            raise Exception("Nix-Darwin設定ファイルが見つかりません")
+        initial_flake = f'''{{
+  description = "Darwin system configuration";
+
+  inputs = {{
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    darwin = {{
+      url = "github:LnL7/nix-darwin";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }};
+  }};
+
+  outputs = {{ self, nixpkgs, darwin }}: {{
+    darwinConfigurations."{hostname}" = darwin.lib.darwinSystem {{
+      system = "aarch64-darwin";
+      modules = [ ./configuration.nix ];
+    }};
+  }};
+}}
+'''
+        
+        # flake.nixを作成
+        with open(config_dir / 'flake.nix', 'w') as f:
+            f.write(initial_flake)
             
-        # bootstrap実行
-        self.logger.info("nix-darwin bootstrapを実行中...")
+        # 基本的なconfiguration.nixも作成
+        initial_config = '''{ config, pkgs, ... }:
+
+{
+  # Auto upgrade nix package and the daemon service.
+  services.nix-daemon.enable = true;
+  nix.package = pkgs.nix;
+
+  # Create /etc/zshrc that loads the nix-darwin environment.
+  programs.zsh.enable = true;
+
+  # Used for backwards compatibility, please read the changelog before changing.
+  # $ darwin-rebuild changelog
+  system.stateVersion = 4;
+}
+'''
         
-        cmd = [
-            'nix', 'run', 'nix-darwin', '--experimental-features',
-            'nix-command flakes', '--', 'switch', '--flake',
-            str(config_dir)
-        ]
-        
-        result = subprocess.run(cmd)
-        
-        if result.returncode != 0:
-            raise Exception("nix-darwin bootstrapに失敗しました")
+        with open(config_dir / 'configuration.nix', 'w') as f:
+            f.write(initial_config)
             
-        self.logger.info("✅ nix-darwin bootstrapが完了しました")
+        self.logger.info("初期設定ファイルを作成しました")
         
     def verify_installation(self):
         """Nixインストールの検証"""
         self.logger.info("Nixインストールを検証中...")
         
+        # PATH に Nix が含まれているか確認
+        nix_path = Path('/nix/var/nix/profiles/default/bin')
+        if not nix_path.exists():
+            self.logger.error("❌ Nix バイナリディレクトリが見つかりません")
+            return False
+            
+        # 環境変数を設定して nix コマンドを実行
+        env = os.environ.copy()
+        env['PATH'] = f"{nix_path}:{env.get('PATH', '')}"
+        
         checks = {
-            'nix': 'nix --version',
-            'nix-env': 'nix-env --version',
-            'nix-shell': 'nix-shell --version'
+            'nix': ['nix', '--version'],
+            'nix-env': ['nix-env', '--version'],
+            'nix-shell': ['nix-shell', '--version']
         }
         
         all_good = True
@@ -160,23 +262,25 @@ trusted-users = root @admin
         for name, cmd in checks.items():
             try:
                 result = subprocess.run(
-                    cmd.split(),
+                    cmd,
                     capture_output=True,
                     text=True,
-                    check=True
+                    check=True,
+                    env=env
                 )
                 version = result.stdout.strip()
                 self.logger.info(f"✅ {name}: {version}")
-            except subprocess.CalledProcessError:
+            except (subprocess.CalledProcessError, FileNotFoundError):
                 self.logger.error(f"❌ {name}: 実行できません")
                 all_good = False
                 
         # Flakesの確認
         try:
             result = subprocess.run(
-                ['nix', 'flake', '--version'],
+                ['nix', '--extra-experimental-features', 'nix-command flakes', 'flake', '--version'],
                 capture_output=True,
-                text=True
+                text=True,
+                env=env
             )
             if result.returncode == 0:
                 self.logger.info("✅ Flakes: 有効")

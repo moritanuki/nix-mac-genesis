@@ -18,6 +18,7 @@ from nix_installer import NixInstaller
 from github_setup import GitHubSetup
 from system_config import SystemConfigDetector
 from security import SecurityManager
+from password_store import PasswordStoreManager
 from utils import ColoredFormatter, confirm_action, check_command_exists
 
 
@@ -55,9 +56,11 @@ class Bootstrap:
         self.github_setup = GitHubSetup(logger)
         self.system_config = SystemConfigDetector(logger)
         self.security_manager = SecurityManager(logger)
+        self.password_store = PasswordStoreManager(logger)
         
-    def run(self, private_repo=None, skip_confirmations=False):
+    def run(self, private_repo=None, skip_confirmations=False, test_mode=False):
         """Bootstrap処理の実行"""
+        self.test_mode = test_mode
         try:
             self.logger.info("🚀 Nix-Darwin Mac初期設定を開始します")
             
@@ -109,32 +112,81 @@ class Bootstrap:
         """Nixのインストール"""
         if check_command_exists('nix'):
             self.logger.info("Nixは既にインストールされています")
+            # 既存のインストールでもFlakesの設定を確認
+            if skip_confirmations or confirm_action("Nix Flakesを有効化しますか？"):
+                if not self.test_mode:
+                    self.nix_installer.setup_flakes()
+                else:
+                    self.logger.info("テストモード: Flakes設定をスキップ")
             return
             
         if skip_confirmations or confirm_action("Nixをインストールしますか？"):
-            self.nix_installer.install_nix()
-            self.nix_installer.setup_flakes()
+            if self.test_mode:
+                self.logger.info("テストモード: Nixインストールをスキップ")
+            else:
+                self.nix_installer.install_nix()
+            
+            # Nixインストール後、新しいシェルで続行する必要があるか確認
+            self.logger.warning("\n⚠️  Nixのインストールが完了しました。")
+            self.logger.warning("新しいターミナルセッションを開くか、以下のコマンドを実行してください：")
+            self.logger.warning("source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh")
+            
+            if not skip_confirmations:
+                input("\n環境変数を読み込んだら、Enterキーを押して続行してください...")
+            
+            # Flakesの設定
+            if not self.test_mode:
+                self.nix_installer.setup_flakes()
+            else:
+                self.logger.info("テストモード: Flakes設定をスキップ")
+            
+            # インストールの検証
+            if not self.test_mode:
+                if not self.nix_installer.verify_installation():
+                    raise Exception("Nixのインストールに問題があります")
+            else:
+                self.logger.info("テストモード: インストール検証をスキップ")
             
     def _setup_github(self, skip_confirmations):
         """GitHub連携の設定"""
         # SSH鍵の生成・設定
         if skip_confirmations or confirm_action("SSH鍵を生成しますか？"):
-            self.github_setup.generate_ssh_keys()
+            if self.test_mode:
+                self.logger.info("テストモード: SSH鍵生成をスキップ")
+            else:
+                self.github_setup.generate_ssh_keys()
             
         # GPG鍵の生成・設定
         if skip_confirmations or confirm_action("GPG鍵を生成しますか？"):
-            self.github_setup.setup_gpg()
+            if self.test_mode:
+                self.logger.info("テストモード: GPG鍵生成をスキップ")
+            else:
+                self.github_setup.setup_gpg()
             
         # GitHub CLI認証
         if skip_confirmations or confirm_action("GitHub CLIで認証しますか？"):
-            self.github_setup.authenticate_gh()
+            if self.test_mode:
+                self.logger.info("テストモード: GitHub CLI認証をスキップ")
+            else:
+                self.github_setup.authenticate_gh()
             
         # Git設定
         self.github_setup.configure_git()
         
+        # password-storeの設定
+        if skip_confirmations or confirm_action("password-storeをセットアップしますか？"):
+            if self.test_mode:
+                self.logger.info("テストモード: password-storeセットアップをスキップ")
+            else:
+                password_repo = ""
+                if not skip_confirmations:
+                    password_repo = input("password-storeのprivateリポジトリURL（空でスキップ）: ").strip()
+                self.password_store.setup_password_store(private_repo_url=password_repo)
+                self.password_store.configure_gpg_for_pass()
+        
     def _setup_nix_darwin(self, private_repo, skip_confirmations):
         """Nix-Darwinの設定"""
-        if not private_repo:
+        if not private_repo and not skip_confirmations:
             private_repo = input("Nix-Darwin設定のprivateリポジトリURL（空でスキップ）: ").strip()
             
         if private_repo:
@@ -151,18 +203,16 @@ class Bootstrap:
             # nix-darwinのインストールと適用
             if skip_confirmations or confirm_action("Nix-Darwin設定を適用しますか？"):
                 self.nix_installer.install_nix_darwin()
-                os.chdir(config_dir)
-                subprocess.run(['nix', 'run', 'nix-darwin', '--', 'switch', '--flake', '.'], check=True)
         else:
             # デフォルトテンプレートから設定を生成
             self.logger.info("デフォルトテンプレートからNix-Darwin設定を生成します")
             self.system_config.generate_nix_config()
             
             if skip_confirmations or confirm_action("生成したNix-Darwin設定を適用しますか？"):
-                self.nix_installer.install_nix_darwin()
-                config_dir = Path.home() / '.config/nix-darwin'
-                os.chdir(config_dir)
-                subprocess.run(['nix', 'run', 'nix-darwin', '--', 'switch', '--flake', '.'], check=True)
+                if self.test_mode:
+                    self.logger.info("テストモード: Nix-Darwin適用をスキップ")
+                else:
+                    self.nix_installer.install_nix_darwin()
 
 
 def main():
@@ -189,6 +239,11 @@ def main():
         default=os.environ.get('GITHUB_USERNAME', 'moritanuki'),
         help='GitHubユーザー名（デフォルト: 環境変数GITHUB_USERNAME or moritanuki）'
     )
+    parser.add_argument(
+        '--test',
+        action='store_true',
+        help='テストモード（実際のインストールをスキップ）'
+    )
     
     args = parser.parse_args()
     
@@ -199,7 +254,8 @@ def main():
     bootstrap = Bootstrap(logger)
     bootstrap.run(
         private_repo=args.private_repo,
-        skip_confirmations=args.yes
+        skip_confirmations=args.yes,
+        test_mode=args.test
     )
 
 
