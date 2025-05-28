@@ -244,8 +244,7 @@ class SystemConfigDetector:
     ./modules/homebrew.nix
   ];
 
-  # Auto upgrade nix package and the daemon service
-  services.nix-daemon.enable = true;
+  # Nix settings
   
   # Enable experimental features
   nix.settings = {{
@@ -261,6 +260,9 @@ class SystemConfigDetector:
 
   # Used for backwards compatibility
   system.stateVersion = 4;
+
+  # Set primary user for nix-darwin
+  system.primaryUser = "{username}";
 
   # The user configuration
   users.users.{username} = {{
@@ -402,7 +404,7 @@ class SystemConfigDetector:
   }};
   
   # Enable Touch ID for sudo
-  security.pam.enableSudoTouchIdAuth = true;
+  security.pam.services.sudo_local.touchIdAuth = true;
 }}
 """
         
