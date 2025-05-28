@@ -163,10 +163,28 @@ class PasswordStoreManager:
         gpg_agent_conf = Path.home() / '.gnupg' / 'gpg-agent.conf'
         gpg_agent_conf.parent.mkdir(parents=True, exist_ok=True)
         
-        gpg_agent_content = """# GPG Agent configuration for macOS
+        # pinentry-macのパスを検出
+        pinentry_paths = [
+            '/Users/mt/.nix-profile/bin/pinentry-mac',
+            '/nix/var/nix/profiles/default/bin/pinentry-mac',
+            '/opt/homebrew/bin/pinentry-mac',
+            '/usr/local/bin/pinentry-mac'
+        ]
+        
+        pinentry_path = None
+        for path in pinentry_paths:
+            if Path(path).exists():
+                pinentry_path = path
+                break
+                
+        if not pinentry_path:
+            self.logger.warning("pinentry-macが見つかりません。デフォルトを使用します")
+            pinentry_path = 'pinentry-mac'
+            
+        gpg_agent_content = f"""# GPG Agent configuration for macOS
 default-cache-ttl 3600
 max-cache-ttl 86400
-pinentry-program /opt/homebrew/bin/pinentry-mac
+pinentry-program {pinentry_path}
 """
         
         if not gpg_agent_conf.exists():
