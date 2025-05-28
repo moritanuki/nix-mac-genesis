@@ -120,6 +120,11 @@ class Bootstrap:
                     self.nix_installer.setup_flakes()
                 else:
                     self.logger.info("テストモード: Flakes設定をスキップ")
+            
+            # 必要なツールをインストール（既存のインストールでも実行）
+            if not self.test_mode:
+                self.logger.info("\n必要なツールをインストール中...")
+                self.nix_installer.install_essential_tools()
             return
             
         if skip_confirmations or confirm_action("Nixをインストールしますか？"):
