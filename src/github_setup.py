@@ -118,10 +118,18 @@ Host github.com
         # 公開鍵の内容を取得
         pub_key_content = self.ssh_pub_key_path.read_text().strip()
         
-        # GitHub CLIがインストールされているか確認
-        try:
-            subprocess.run(['gh', '--version'], capture_output=True, check=True)
-        except:
+        # GitHub CLIがインストールされているか確認（Nixパスも含めて）
+        gh_found = False
+        for path in ['/nix/var/nix/profiles/default/bin/gh', 'gh']:
+            try:
+                subprocess.run([path, '--version'], capture_output=True, check=True)
+                gh_cmd = path
+                gh_found = True
+                break
+            except:
+                continue
+                
+        if not gh_found:
             self.logger.warning("GitHub CLIがインストールされていません")
             self.logger.info("手動で以下の公開鍵をGitHubに登録してください:")
             self.logger.info(f"\n{pub_key_content}\n")
@@ -132,7 +140,7 @@ Host github.com
         key_title = f"{hostname} - nix-mac-genesis"
         
         try:
-            cmd = ['gh', 'ssh-key', 'add', str(self.ssh_pub_key_path), '--title', key_title]
+            cmd = [gh_cmd, 'ssh-key', 'add', str(self.ssh_pub_key_path), '--title', key_title]
             subprocess.run(cmd, check=True)
             self.logger.info("✅ SSH公開鍵をGitHubに登録しました")
         except subprocess.CalledProcessError:
@@ -144,17 +152,25 @@ Host github.com
         """GPG鍵を生成してGitHubに登録"""
         self.logger.info("GPG鍵を生成中...")
         
-        # GPGがインストールされているか確認
-        try:
-            subprocess.run(['gpg', '--version'], capture_output=True, check=True)
-        except:
+        # GPGがインストールされているか確認（Nixパスも含めて）
+        gpg_found = False
+        for path in ['/nix/var/nix/profiles/default/bin/gpg', 'gpg']:
+            try:
+                subprocess.run([path, '--version'], capture_output=True, check=True)
+                gpg_cmd = path
+                gpg_found = True
+                break
+            except:
+                continue
+                
+        if not gpg_found:
             self.logger.error("GPGがインストールされていません")
             self.logger.info("Nixでgpgをインストールしてください")
             return
             
         # 既存の鍵をチェック
         result = subprocess.run(
-            ['gpg', '--list-secret-keys', '--keyid-format', 'LONG'],
+            [gpg_cmd, '--list-secret-keys', '--keyid-format', 'LONG'],
             capture_output=True,
             text=True
         )
@@ -193,7 +209,7 @@ Expire-Date: 2y
         try:
             # GPG鍵生成
             subprocess.run(
-                ['gpg', '--batch', '--generate-key', str(batch_file)],
+                [gpg_cmd, '--batch', '--generate-key', str(batch_file)],
                 check=True
             )
             self.logger.info("✅ GPG鍵の生成が完了しました")

@@ -112,6 +112,8 @@ class Bootstrap:
         """Nixのインストール"""
         if check_command_exists('nix'):
             self.logger.info("Nixは既にインストールされています")
+            # 環境変数を設定
+            self.nix_installer.setup_nix_environment()
             # 既存のインストールでもFlakesの設定を確認
             if skip_confirmations or confirm_action("Nix Flakesを有効化しますか？"):
                 if not self.test_mode:
@@ -126,13 +128,10 @@ class Bootstrap:
             else:
                 self.nix_installer.install_nix()
             
-            # Nixインストール後、新しいシェルで続行する必要があるか確認
-            self.logger.warning("\n⚠️  Nixのインストールが完了しました。")
-            self.logger.warning("新しいターミナルセッションを開くか、以下のコマンドを実行してください：")
-            self.logger.warning("source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh")
-            
-            if not skip_confirmations:
-                input("\n環境変数を読み込んだら、Enterキーを押して続行してください...")
+            # Nixインストール後、環境変数を設定
+            self.logger.info("\n環境変数を設定中...")
+            if not self.test_mode:
+                self.nix_installer.setup_nix_environment()
             
             # Flakesの設定
             if not self.test_mode:
@@ -146,6 +145,11 @@ class Bootstrap:
                     raise Exception("Nixのインストールに問題があります")
             else:
                 self.logger.info("テストモード: インストール検証をスキップ")
+                
+            # 必要なツールをインストール
+            if not self.test_mode:
+                self.logger.info("\n必要なツールをインストール中...")
+                self.nix_installer.install_essential_tools()
             
     def _setup_github(self, skip_confirmations):
         """GitHub連携の設定"""

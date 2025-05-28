@@ -121,10 +121,15 @@ class NixInstaller:
         self.logger.info("nix-darwinをインストール中...")
         
         try:
+            # 環境変数を設定
+            env = os.environ.copy()
+            env['PATH'] = f"/nix/var/nix/profiles/default/bin:{env.get('PATH', '')}"
+            
             # darwin-rebuildコマンドが存在するかチェック
             darwin_rebuild_exists = subprocess.run(
                 ['which', 'darwin-rebuild'],
-                capture_output=True
+                capture_output=True,
+                env=env
             ).returncode == 0
             
             if not darwin_rebuild_exists:
@@ -139,13 +144,21 @@ class NixInstaller:
                 if not (darwin_config_dir / 'flake.nix').exists():
                     self._create_initial_flake(darwin_config_dir)
                 
+                # ホスト名を取得
+                hostname = subprocess.run(
+                    ['hostname', '-s'],
+                    capture_output=True,
+                    text=True,
+                    env=env
+                ).stdout.strip()
+                
                 # nix-darwinをビルドしてインストール
                 cmd = [
-                    'nix', 'build', f'{darwin_config_dir}#darwinConfigurations.$(hostname -s).system',
+                    'nix', 'build', f'{darwin_config_dir}#darwinConfigurations.{hostname}.system',
                     '--extra-experimental-features', 'nix-command flakes'
                 ]
                 
-                result = subprocess.run(cmd, capture_output=True, text=True)
+                result = subprocess.run(cmd, capture_output=True, text=True, env=env)
                 if result.returncode != 0:
                     self.logger.error(f"nix-darwinビルドエラー: {result.stderr}")
                     raise Exception("nix-darwinのビルドに失敗しました")
@@ -157,7 +170,7 @@ class NixInstaller:
                     '--flake', str(darwin_config_dir)
                 ]
                 
-                result = subprocess.run(cmd, capture_output=True, text=True)
+                result = subprocess.run(cmd, capture_output=True, text=True, env=env)
                 if result.returncode != 0:
                     self.logger.error(f"darwin-rebuild switchエラー: {result.stderr}")
                     raise Exception("darwin-rebuild switchに失敗しました")
@@ -172,7 +185,7 @@ class NixInstaller:
                     '--flake', str(darwin_config_dir)
                 ]
                 
-                result = subprocess.run(cmd, capture_output=True, text=True)
+                result = subprocess.run(cmd, capture_output=True, text=True, env=env)
                 if result.returncode != 0:
                     self.logger.error(f"darwin-rebuild switchエラー: {result.stderr}")
                     raise Exception("darwin-rebuild switchに失敗しました")
@@ -290,3 +303,50 @@ class NixInstaller:
             self.logger.warning("⚠️  Flakes: 確認できません")
             
         return all_good
+    
+    def setup_nix_environment(self):
+        """Nixの環境変数を設定"""
+        self.logger.info("Nix環境変数を設定中...")
+        
+        # Nix環境スクリプトのパス
+        nix_daemon_script = Path('/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh')
+        
+        if nix_daemon_script.exists():
+            # 環境変数を設定
+            os.environ['PATH'] = f"/nix/var/nix/profiles/default/bin:{os.environ.get('PATH', '')}"
+            os.environ['NIX_SSL_CERT_FILE'] = "/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt"
+            
+            self.logger.info("✅ Nix環境変数を設定しました")
+            return True
+        else:
+            self.logger.error("❌ Nix環境スクリプトが見つかりません")
+            return False
+    
+    def install_essential_tools(self):
+        """必要なツールをNixでインストール"""
+        self.logger.info("必要なツールをインストール中...")
+        
+        try:
+            # 環境変数を設定
+            env = os.environ.copy()
+            env['PATH'] = f"/nix/var/nix/profiles/default/bin:{env.get('PATH', '')}"
+            
+            # インストールするパッケージ
+            packages = ['github-cli', 'gnupg', 'pinentry_mac']
+            
+            for package in packages:
+                self.logger.info(f"インストール中: {package}")
+                cmd = [
+                    'nix-env', '-iA', f'nixpkgs.{package}',
+                    '--extra-experimental-features', 'nix-command flakes'
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+                if result.returncode == 0:
+                    self.logger.info(f"✅ {package}をインストールしました")
+                else:
+                    self.logger.warning(f"⚠️  {package}のインストールに失敗: {result.stderr}")
+                    
+        except Exception as e:
+            self.logger.error(f"ツールのインストール中にエラー: {e}")
+            raise
